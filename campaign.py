@@ -41,7 +41,7 @@ def _wait_for_campaign_start(driver, code, log, is_running):
         if attempt % 6 == 0:
             log(f"Still waiting for campaign {code}...")
 
-        for _ in range(10):
+        for _ in range(3):
             if not is_running():
                 return False
             time.sleep(1)
@@ -135,8 +135,10 @@ def _collect_product_links(driver):
 
 def _grab_products(driver, sizes, log, is_running):
     product_links = _collect_product_links(driver)
-    campaign_url = driver.current_url
+    main_window = driver.current_window_handle
     total = len(product_links)
+    
+    # Initial cart count from main page
     added_count = _get_cart_count(driver)
     attempted = 0
 
@@ -144,31 +146,39 @@ def _grab_products(driver, sizes, log, is_running):
 
     for i, href in enumerate(product_links):
         if not is_running():
-            return added_count
+            break
         if added_count >= MAX_CART_ITEMS:
             log(f"Cart full! {added_count}/{MAX_CART_ITEMS} items.")
-            return added_count
+            break
 
-        log(f"[{i+1}/{total}] Opening product...")
-        driver.get(href)
-        time.sleep(1.5)
+        log(f"[{i+1}/{total}] Opening product in new tab...")
+        
+        # Open in new tab and switch
+        driver.execute_script(f"window.open('{href}', '_blank');")
+        driver.switch_to.window(driver.window_handles[-1])
 
-        success = try_add_product(driver, sizes, log)
-
-        if success:
-            added_count = _get_cart_count(driver)
-            log(f"Cart: {added_count}/{MAX_CART_ITEMS}")
+        try:
+            success = try_add_product(driver, sizes, log)
+            if success:
+                added_count += 1
+                log(f"Cart (estimated): {added_count}/{MAX_CART_ITEMS}")
+        except Exception as e:
+            log(f"Error on product page: {e}")
+        finally:
+            # Close product tab and switch back to main campaign tab
+            driver.close()
+            driver.switch_to.window(main_window)
+            time.sleep(0.5)  # Short pause before next product
 
         attempted += 1
 
-        driver.get(campaign_url)
-        time.sleep(1.5)
+    # Refresh main page once at the end to get the true final cart count
+    if attempted > 0:
+        driver.refresh()
+        time.sleep(2)
+        added_count = _get_cart_count(driver)
 
-        if added_count >= MAX_CART_ITEMS:
-            log(f"Cart full! {added_count}/{MAX_CART_ITEMS} items.")
-            return added_count
-
-    log(f"Finished. Went through {attempted} products. Cart: {added_count}/{MAX_CART_ITEMS}")
+    log(f"Finished. Went through {attempted} products. Actual Cart: {added_count}/{MAX_CART_ITEMS}")
     return added_count
 
 

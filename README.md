@@ -4,10 +4,10 @@ Tired of waiting for a product on Zalando Lounge? This bot does it for you!
 
 ## Two Modes
 
-### 🔗 Product Reserve
+### Product Reserve
 Enter a product URL and sizes — the bot refreshes until your size is available and adds it to cart.
 
-### 🛍️ Campaign Grab
+### Campaign Grab
 Enter an upcoming campaign code — the bot waits for it to start, applies your filters (brand, sort), and fills your cart with up to 20 products.
 
 ## How to run
@@ -37,4 +37,3 @@ pip install selenium webdriver-manager
 | `browser_utils.py` | Shared Selenium helpers — browser, login, cookies |
 | `reserve.py` | Product Reserve — single product reservation |
 | `campaign.py` | Campaign Grab — fill cart from a campaign |
-| `bot.py` | Compatibility shim (re-exports from modules above) |

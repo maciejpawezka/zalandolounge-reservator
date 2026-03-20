@@ -15,7 +15,7 @@ class App:
         self.driver = None
         self.running = False
         self.password_visible = False
-        self.mode = None  # "reserve" or "campaign"
+        self.mode = None
         self._build_gui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -59,7 +59,6 @@ class App:
         ttk.Label(main, text="Automatic product reservation",
                   style="Subtitle.TLabel").pack(pady=(0, 20))
 
-        # ── Mode buttons ──
         mode_frame = tk.Frame(main, bg=self.BG)
         mode_frame.pack(fill="x", pady=(0, 15))
 
@@ -83,11 +82,9 @@ class App:
         )
         self.btn_campaign_mode.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
-        # ── Options card (hidden until mode selected) ──
         self.card_frame = tk.Frame(main, bg=self.BG)
         self.entries = {}
 
-        # ── Action buttons ──
         btn_frame = tk.Frame(main, bg=self.BG)
         btn_frame.pack(fill="x", pady=(5, 10))
         self.action_btn_frame = btn_frame
@@ -112,7 +109,6 @@ class App:
         )
         self.btn_stop.pack(side="left", expand=True, fill="x", padx=(5, 0), ipady=2)
 
-        # ── Status & Log ──
         self.status_var = tk.StringVar(value="Select a mode to begin")
         ttk.Label(main, textvariable=self.status_var,
                   style="Status.TLabel").pack(anchor="w", pady=(0, 5))
@@ -134,10 +130,8 @@ class App:
         self.root.minsize(580, 400)
 
     def _select_mode(self, mode):
-        """Show the input fields for the selected mode."""
         self.mode = mode
 
-        # Update button styles
         if mode == "reserve":
             self.btn_reserve_mode.configure(
                 bg=self._accent, fg="white", relief="flat"
@@ -153,13 +147,11 @@ class App:
                 bg=self._card_bg, fg=self._text, relief="solid"
             )
 
-        # Remove old card
         self.card_frame.pack_forget()
         for w in self.card_frame.winfo_children():
             w.destroy()
         self.entries.clear()
 
-        # Build new card
         card = ttk.Frame(self.card_frame, style="Card.TFrame", padding=20)
         card.pack(fill="x")
 
@@ -175,7 +167,6 @@ class App:
             self._add_field(card, "Sizes (e.g. M,L,XL):", "sizes", 3)
             self._add_field(card, "Brand:", "brand", 4)
 
-            # Sort dropdown
             lbl = ttk.Label(card, text="Sort:", style="Field.TLabel")
             lbl.grid(row=5, column=0, sticky="w", pady=6, padx=(0, 12))
             self.sort_var = tk.StringVar(value="Popularne")
@@ -188,7 +179,6 @@ class App:
 
         card.columnconfigure(1, weight=1)
 
-        # Show card above buttons
         self.card_frame.pack(fill="x", pady=(0, 15),
                              before=self.action_btn_frame)
 
