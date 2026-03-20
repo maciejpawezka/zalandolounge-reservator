@@ -1,7 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
-from bot import launch_browser, login, reserve
+from browser_utils import launch_browser
+from reserve import login, reserve
+from campaign import campaign_grab
 
 
 class App:
@@ -13,100 +15,87 @@ class App:
         self.driver = None
         self.running = False
         self.password_visible = False
+        self.mode = None  # "reserve" or "campaign"
         self._build_gui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_gui(self):
-        BG = "#f5f6fa"
+        self.BG = "#f5f6fa"
         CARD_BG = "#ffffff"
         ACCENT = "#2563eb"
-        ACCENT_HOVER = "#1d4ed8"
         TEXT = "#1e293b"
         TEXT_LIGHT = "#64748b"
         BORDER = "#e2e8f0"
         SUCCESS = "#16a34a"
         INPUT_BG = "#f8fafc"
 
+        self._card_bg = CARD_BG
+        self._input_bg = INPUT_BG
+        self._text = TEXT
+        self._accent = ACCENT
+        self._accent_hover = "#1d4ed8"
+        self._border = BORDER
+        self._text_light = TEXT_LIGHT
+
         style = ttk.Style()
         style.theme_use("clam")
-
-        style.configure("Main.TFrame", background=BG)
+        style.configure("Main.TFrame", background=self.BG)
         style.configure("Card.TFrame", background=CARD_BG)
-        style.configure("Title.TLabel", background=BG, foreground=ACCENT,
+        style.configure("Title.TLabel", background=self.BG, foreground=ACCENT,
                          font=("Segoe UI", 18, "bold"))
-        style.configure("Subtitle.TLabel", background=BG, foreground=TEXT_LIGHT,
+        style.configure("Subtitle.TLabel", background=self.BG, foreground=TEXT_LIGHT,
                          font=("Segoe UI", 9))
         style.configure("Field.TLabel", background=CARD_BG, foreground=TEXT,
                          font=("Segoe UI", 10))
-        style.configure("Status.TLabel", background=BG, foreground=SUCCESS,
+        style.configure("Status.TLabel", background=self.BG, foreground=SUCCESS,
                          font=("Segoe UI", 10))
 
         main = ttk.Frame(self.root, style="Main.TFrame", padding=30)
         main.pack(fill="both", expand=True)
+        self.main = main
 
         ttk.Label(main, text="🛒 Zalando Lounge Reservator",
                   style="Title.TLabel").pack(pady=(0, 2))
         ttk.Label(main, text="Automatic product reservation",
                   style="Subtitle.TLabel").pack(pady=(0, 20))
 
-        card = ttk.Frame(main, style="Card.TFrame", padding=20)
-        card.pack(fill="x", pady=(0, 15))
+        # ── Mode buttons ──
+        mode_frame = tk.Frame(main, bg=self.BG)
+        mode_frame.pack(fill="x", pady=(0, 15))
 
-        fields = [
-            ("Product URL:", "url"),
-            ("Email:", "email"),
-            ("Password:", "password"),
-            ("Sizes (e.g. M,L,XL):", "sizes"),
-        ]
+        self.btn_reserve_mode = tk.Button(
+            mode_frame, text="🔗  Product Reserve",
+            font=("Segoe UI", 12, "bold"),
+            bg=CARD_BG, fg=TEXT, activebackground="#e0e7ff",
+            activeforeground=ACCENT, relief="solid", bd=1,
+            cursor="hand2", pady=14,
+            command=lambda: self._select_mode("reserve")
+        )
+        self.btn_reserve_mode.pack(side="left", expand=True, fill="x", padx=(0, 6))
 
+        self.btn_campaign_mode = tk.Button(
+            mode_frame, text="🛍️  Campaign Grab",
+            font=("Segoe UI", 12, "bold"),
+            bg=CARD_BG, fg=TEXT, activebackground="#e0e7ff",
+            activeforeground=ACCENT, relief="solid", bd=1,
+            cursor="hand2", pady=14,
+            command=lambda: self._select_mode("campaign")
+        )
+        self.btn_campaign_mode.pack(side="left", expand=True, fill="x", padx=(6, 0))
+
+        # ── Options card (hidden until mode selected) ──
+        self.card_frame = tk.Frame(main, bg=self.BG)
         self.entries = {}
-        for i, (label, key) in enumerate(fields):
-            ttk.Label(card, text=label, style="Field.TLabel").grid(
-                row=i, column=0, sticky="w", pady=6, padx=(0, 12)
-            )
 
-            if key == "password":
-                pw_frame = tk.Frame(card, bg=CARD_BG)
-                pw_frame.grid(row=i, column=1, pady=6, sticky="ew")
-
-                entry = tk.Entry(
-                    pw_frame, width=38, font=("Segoe UI", 10),
-                    show="•", bg=INPUT_BG, fg=TEXT,
-                    relief="solid", bd=1,
-                    highlightthickness=2, highlightcolor=ACCENT,
-                    highlightbackground=BORDER
-                )
-                entry.pack(side="left", fill="x", expand=True)
-
-                self.btn_toggle_pw = tk.Button(
-                    pw_frame, text="👁", font=("Segoe UI", 10),
-                    bg=CARD_BG, fg=TEXT_LIGHT, relief="flat", bd=0,
-                    cursor="hand2", command=self._toggle_password,
-                    activebackground=CARD_BG
-                )
-                self.btn_toggle_pw.pack(side="right", padx=(4, 0))
-
-                self.entries[key] = entry
-            else:
-                entry = tk.Entry(
-                    card, width=45, font=("Segoe UI", 10),
-                    bg=INPUT_BG, fg=TEXT,
-                    relief="solid", bd=1,
-                    highlightthickness=2, highlightcolor=ACCENT,
-                    highlightbackground=BORDER
-                )
-                entry.grid(row=i, column=1, pady=6, sticky="ew")
-                self.entries[key] = entry
-
-        card.columnconfigure(1, weight=1)
-
-        btn_frame = tk.Frame(main, bg=BG)
+        # ── Action buttons ──
+        btn_frame = tk.Frame(main, bg=self.BG)
         btn_frame.pack(fill="x", pady=(5, 10))
+        self.action_btn_frame = btn_frame
 
         self.btn_start = tk.Button(
             btn_frame, text="▶  START",
             font=("Segoe UI", 11, "bold"),
-            bg=ACCENT, fg="white", activebackground=ACCENT_HOVER,
+            bg=ACCENT, fg="white", activebackground=self._accent_hover,
             activeforeground="white", relief="flat", bd=0,
             cursor="hand2", padx=30, pady=10,
             command=self._on_start
@@ -123,15 +112,16 @@ class App:
         )
         self.btn_stop.pack(side="left", expand=True, fill="x", padx=(5, 0), ipady=2)
 
-        self.status_var = tk.StringVar(value="Ready")
+        # ── Status & Log ──
+        self.status_var = tk.StringVar(value="Select a mode to begin")
         ttk.Label(main, textvariable=self.status_var,
                   style="Status.TLabel").pack(anchor="w", pady=(0, 5))
 
-        log_frame = tk.Frame(main, bg=BG)
+        log_frame = tk.Frame(main, bg=self.BG)
         log_frame.pack(fill="both", expand=True, pady=(5, 0))
 
         self.log_text = tk.Text(
-            log_frame, height=10, bg="#f1f5f9", fg=TEXT,
+            log_frame, height=8, bg="#f1f5f9", fg=TEXT,
             font=("Consolas", 9), relief="solid", bd=1,
             insertbackground=ACCENT, state="disabled", wrap="word"
         )
@@ -140,9 +130,110 @@ class App:
         self.log_text.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        self.root.geometry("580x560")
+        self.root.geometry("580x640")
+        self.root.minsize(580, 400)
 
-        self._accent = ACCENT
+    def _select_mode(self, mode):
+        """Show the input fields for the selected mode."""
+        self.mode = mode
+
+        # Update button styles
+        if mode == "reserve":
+            self.btn_reserve_mode.configure(
+                bg=self._accent, fg="white", relief="flat"
+            )
+            self.btn_campaign_mode.configure(
+                bg=self._card_bg, fg=self._text, relief="solid"
+            )
+        else:
+            self.btn_campaign_mode.configure(
+                bg=self._accent, fg="white", relief="flat"
+            )
+            self.btn_reserve_mode.configure(
+                bg=self._card_bg, fg=self._text, relief="solid"
+            )
+
+        # Remove old card
+        self.card_frame.pack_forget()
+        for w in self.card_frame.winfo_children():
+            w.destroy()
+        self.entries.clear()
+
+        # Build new card
+        card = ttk.Frame(self.card_frame, style="Card.TFrame", padding=20)
+        card.pack(fill="x")
+
+        if mode == "reserve":
+            self._add_field(card, "Product URL:", "url", 0)
+            self._add_field(card, "Email:", "email", 1)
+            self._add_password_field(card, 2)
+            self._add_field(card, "Sizes (e.g. M,L,XL):", "sizes", 3)
+        else:
+            self._add_field(card, "Campaign Code:", "code", 0)
+            self._add_field(card, "Email:", "email", 1)
+            self._add_password_field(card, 2)
+            self._add_field(card, "Sizes (e.g. M,L,XL):", "sizes", 3)
+            self._add_field(card, "Brand:", "brand", 4)
+
+            # Sort dropdown
+            lbl = ttk.Label(card, text="Sort:", style="Field.TLabel")
+            lbl.grid(row=5, column=0, sticky="w", pady=6, padx=(0, 12))
+            self.sort_var = tk.StringVar(value="Popularne")
+            sort_combo = ttk.Combobox(
+                card, textvariable=self.sort_var,
+                values=["Popularne", "Najniższa cena", "Najwyższa cena", "Wyprzedaż"],
+                state="readonly", font=("Segoe UI", 10), width=42
+            )
+            sort_combo.grid(row=5, column=1, pady=6, sticky="ew")
+
+        card.columnconfigure(1, weight=1)
+
+        # Show card above buttons
+        self.card_frame.pack(fill="x", pady=(0, 15),
+                             before=self.action_btn_frame)
+
+        self._set_status("Ready")
+
+    def _add_field(self, card, label_text, key, row):
+        ttk.Label(card, text=label_text, style="Field.TLabel").grid(
+            row=row, column=0, sticky="w", pady=6, padx=(0, 12)
+        )
+        entry = tk.Entry(
+            card, width=45, font=("Segoe UI", 10),
+            bg=self._input_bg, fg=self._text,
+            relief="solid", bd=1,
+            highlightthickness=2, highlightcolor=self._accent,
+            highlightbackground=self._border
+        )
+        entry.grid(row=row, column=1, pady=6, sticky="ew")
+        self.entries[key] = entry
+
+    def _add_password_field(self, card, row):
+        ttk.Label(card, text="Password:", style="Field.TLabel").grid(
+            row=row, column=0, sticky="w", pady=6, padx=(0, 12)
+        )
+        pw_frame = tk.Frame(card, bg=self._card_bg)
+        pw_frame.grid(row=row, column=1, pady=6, sticky="ew")
+
+        entry = tk.Entry(
+            pw_frame, width=38, font=("Segoe UI", 10),
+            show="•", bg=self._input_bg, fg=self._text,
+            relief="solid", bd=1,
+            highlightthickness=2, highlightcolor=self._accent,
+            highlightbackground=self._border
+        )
+        entry.pack(side="left", fill="x", expand=True)
+
+        self.btn_toggle_pw = tk.Button(
+            pw_frame, text="👁", font=("Segoe UI", 10),
+            bg=self._card_bg, fg=self._text_light, relief="flat", bd=0,
+            cursor="hand2", command=self._toggle_password,
+            activebackground=self._card_bg
+        )
+        self.btn_toggle_pw.pack(side="right", padx=(4, 0))
+
+        self.entries["password"] = entry
+        self.password_visible = False
 
     def _toggle_password(self):
         self.password_visible = not self.password_visible
@@ -166,16 +257,38 @@ class App:
         self.root.after(0, lambda: self.status_var.set(msg))
 
     def _on_start(self):
-        url = self.entries["url"].get().strip()
-        email = self.entries["email"].get().strip()
-        password = self.entries["password"].get().strip()
-        sizes_raw = self.entries["sizes"].get().strip()
+        if not self.mode:
+            messagebox.showwarning("No mode", "Please select a mode first.")
+            return
 
-        if not all([url, email, password, sizes_raw]):
+        email = self.entries.get("email")
+        password = self.entries.get("password")
+        sizes_entry = self.entries.get("sizes")
+
+        if not email or not password or not sizes_entry:
             messagebox.showwarning("Missing data", "Please fill in all fields.")
             return
 
+        email_val = email.get().strip()
+        pw_val = password.get().strip()
+        sizes_raw = sizes_entry.get().strip()
+
+        if not all([email_val, pw_val, sizes_raw]):
+            messagebox.showwarning("Missing data", "Please fill in Email, Password and Sizes.")
+            return
+
         sizes = [s.strip() for s in sizes_raw.split(",")]
+
+        if self.mode == "reserve":
+            url = self.entries["url"].get().strip()
+            if not url:
+                messagebox.showwarning("Missing data", "Please enter the Product URL.")
+                return
+        else:
+            code = self.entries["code"].get().strip()
+            if not code:
+                messagebox.showwarning("Missing data", "Please enter the Campaign Code.")
+                return
 
         self.running = True
         self.btn_start.configure(state="disabled", bg="#94a3b8")
@@ -183,9 +296,20 @@ class App:
         for e in self.entries.values():
             e.configure(state="disabled")
 
-        thread = threading.Thread(
-            target=self._run, args=(url, email, password, sizes), daemon=True
-        )
+        if self.mode == "reserve":
+            thread = threading.Thread(
+                target=self._run_reserve, args=(url, email_val, pw_val, sizes),
+                daemon=True
+            )
+        else:
+            sort = self.sort_var.get()
+            brand_entry = self.entries.get("brand")
+            brand_val = brand_entry.get().strip() if brand_entry else ""
+            thread = threading.Thread(
+                target=self._run_campaign, args=(code, email_val, pw_val, sizes, sort, brand_val),
+                daemon=True
+            )
+
         thread.start()
 
     def _on_stop(self):
@@ -210,9 +334,10 @@ class App:
                 e.configure(state="normal")
         self.root.after(0, _r)
 
-    def _run(self, url, email, password, sizes):
+    def _run_reserve(self, url, email, password, sizes):
         try:
             self._set_status("Launching browser...")
+            self._log("=== Product Reserve Mode ===")
             self._log("Launching browser...")
 
             self.driver = launch_browser()
@@ -236,6 +361,35 @@ class App:
                 self._set_status("✅ Success! Product added to cart.")
             elif not self.running:
                 self._set_status("Stopped.")
+
+        except Exception as e:
+            self._log(f"Error: {e}")
+            self._set_status("Error")
+        finally:
+            self._reset_ui()
+
+    def _run_campaign(self, code, email, password, sizes, sort, brand):
+        try:
+            self._set_status("Launching browser...")
+            self._log("=== Campaign Grab Mode ===")
+            self._log("Launching browser...")
+
+            self.driver = launch_browser()
+
+            self._set_status("Logging in & waiting for campaign...")
+
+            added = campaign_grab(
+                self.driver, code, email, password, sizes, sort, brand,
+                log=self._log,
+                is_running=lambda: self.running
+            )
+
+            if added >= 20:
+                self._set_status(f"✅ Done! {added} products in cart.")
+            elif not self.running:
+                self._set_status(f"Stopped. {added} products in cart.")
+            else:
+                self._set_status(f"Finished. {added} products added to cart.")
 
         except Exception as e:
             self._log(f"Error: {e}")
